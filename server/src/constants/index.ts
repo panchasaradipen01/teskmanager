@@ -1,0 +1,71 @@
+export const ROLES = {
+  ADMIN: 'ADMIN',
+  USER: 'USER',
+} as const;
+
+export type UserRole = (typeof ROLES)[keyof typeof ROLES];
+
+export const USER_STATUS = {
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+} as const;
+
+export type UserStatus = (typeof USER_STATUS)[keyof typeof USER_STATUS];
+
+export const TASK_STATUS = {
+  TODO: 'TODO',
+  IN_PROGRESS: 'IN_PROGRESS',
+  BLOCKED: 'BLOCKED',
+  COMPLETED: 'COMPLETED',
+} as const;
+
+export type TaskStatus = (typeof TASK_STATUS)[keyof typeof TASK_STATUS];
+
+export const TASK_PRIORITY = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+  URGENT: 'URGENT',
+} as const;
+
+export type TaskPriority = (typeof TASK_PRIORITY)[keyof typeof TASK_PRIORITY];
+
+export const ATTENDANCE_STATUS = {
+  PRESENT: 'PRESENT',
+  HALF_DAY: 'HALF_DAY',
+  ABSENT: 'ABSENT',
+  INCOMPLETE: 'INCOMPLETE', // Punched in but missed punch-out
+} as const;
+
+export type AttendanceStatus = (typeof ATTENDANCE_STATUS)[keyof typeof ATTENDANCE_STATUS];
+
+export const CORRECTION_STATUS = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+} as const;
+
+export type CorrectionStatus = (typeof CORRECTION_STATUS)[keyof typeof CORRECTION_STATUS];
+
+export const AUDIT_ACTIONS = {
+  USER_LOGIN: 'USER_LOGIN',
+  USER_LOGOUT: 'USER_LOGOUT',
+  LOGIN_FAILED: 'LOGIN_FAILED',
+  PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+  PASSWORD_RESET: 'PASSWORD_RESET',
+  USER_CREATED: 'USER_CREATED',
+  USER_UPDATED: 'USER_UPDATED',
+  USER_STATUS_CHANGED: 'USER_STATUS_CHANGED',
+  PUNCH_IN: 'PUNCH_IN',
+  PUNCH_OUT: 'PUNCH_OUT',
+  ATTENDANCE_CORRECTION_REQUESTED: 'ATTENDANCE_CORRECTION_REQUESTED',
+  ATTENDANCE_CORRECTION_REVIEWED: 'ATTENDANCE_CORRECTION_REVIEWED',
+  TASK_CREATED: 'TASK_CREATED',
+  TASK_UPDATED: 'TASK_UPDATED',
+  TASK_DELETED: 'TASK_DELETED',
+  TIME_ENTRY_CREATED: 'TIME_ENTRY_CREATED',
+  TIME_ENTRY_UPDATED: 'TIME_ENTRY_UPDATED',
+  TIME_ENTRY_DELETED: 'TIME_ENTRY_DELETED',
+} as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

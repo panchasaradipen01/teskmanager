@@ -7,7 +7,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 export const ENV = {
   NODE_ENV: process.env.NODE_ENV || 'development',
-  PORT: parseInt(process.env.PORT || '5000', 10),
+  PORT: parseInt(process.env.PORT || '5001', 10),
   APP_NAME: process.env.APP_NAME || 'TaskPulse',
   COMPANY_NAME: process.env.COMPANY_NAME || 'TaskPulse Technologies',
   DEFAULT_TIMEZONE: process.env.DEFAULT_TIMEZONE || 'Asia/Kolkata',

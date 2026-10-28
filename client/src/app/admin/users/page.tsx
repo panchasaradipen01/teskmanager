@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
+import { useToast } from '@/context/ToastContext';
 import {
   UserPlus,
   Search,
@@ -22,8 +23,10 @@ import {
   CheckCircle2,
   AlertCircle,
 } from 'lucide-react';
+import { provisionUserSchema, getZodFieldErrors } from '@/lib/validations';
 
 export default function UsersManagementPage() {
+  const { toast } = useToast();
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -45,6 +48,8 @@ export default function UsersManagementPage() {
   const [role, setRole] = useState('USER');
   const [department, setDepartment] = useState('Engineering');
   const [temporaryPassword, setTemporaryPassword] = useState('');
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [resetErrors, setResetErrors] = useState<Record<string, string>>({});
 
   // Generated Credentials Display Modal
   const [createdCredentials, setCreatedCredentials] = useState<{
@@ -54,7 +59,6 @@ export default function UsersManagementPage() {
   } | null>(null);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const fetchUsers = useCallback(async () => {
@@ -85,16 +89,45 @@ export default function UsersManagementPage() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormErrors({});
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedEmpId = employeeId.trim().toUpperCase();
+
+    // Frontend duplicate validation
+    if (users.some((u) => u.email.toLowerCase() === trimmedEmail)) {
+      setFormErrors({ email: 'A user with this email address already exists.' });
+      return;
+    }
+
+    if (users.some((u) => u.employeeId.toUpperCase() === trimmedEmpId)) {
+      setFormErrors({ employeeId: 'A user with this Employee ID already exists.' });
+      return;
+    }
+
+    const validation = provisionUserSchema.safeParse({
+      name: name.trim(),
+      email: trimmedEmail,
+      employeeId: trimmedEmpId,
+      role,
+      department: department.trim() || 'General',
+      temporaryPassword: temporaryPassword || undefined,
+    });
+
+    if (!validation.success) {
+      setFormErrors(getZodFieldErrors(validation.error));
+      return;
+    }
+
     setIsSubmitting(true);
-    setFeedback(null);
 
     try {
       const res = await api.post('/users', {
-        name,
-        email,
-        employeeId,
+        name: name.trim(),
+        email: trimmedEmail,
+        employeeId: trimmedEmpId,
         role,
-        department,
+        department: department.trim() || 'General',
         temporaryPassword: temporaryPassword || undefined,
       });
 
@@ -104,14 +137,26 @@ export default function UsersManagementPage() {
         temporaryPassword: res.data.temporaryPassword,
       });
 
+      toast.success(`User ${name} provisioned successfully!`);
       setIsAddOpen(false);
       setName('');
       setEmail('');
       setEmployeeId('');
       setTemporaryPassword('');
+      setFormErrors({});
       await fetchUsers();
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err.message || 'Failed to create user' });
+      if (err.details?.field) {
+        setFormErrors({ [err.details.field]: err.message });
+      } else if (err.details && Array.isArray(err.details)) {
+        const bErrors: Record<string, string> = {};
+        err.details.forEach((d: any) => {
+          if (d.field) bErrors[d.field] = d.message;
+        });
+        setFormErrors(bErrors);
+      } else {
+        toast.error(err.message || 'Failed to create user');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -121,16 +166,23 @@ export default function UsersManagementPage() {
     const newStatus = user.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
       await api.patch(`/users/${user._id}/status`, { status: newStatus });
-      setFeedback({ type: 'success', text: `User ${user.name} is now ${newStatus}.` });
+      toast.success(`User ${user.name} is now ${newStatus}.`);
       await fetchUsers();
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err.message || 'Status update failed' });
+      toast.error(err.message || 'Status update failed');
     }
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
+    setResetErrors({});
+
+    if (temporaryPassword && temporaryPassword.length < 8) {
+      setResetErrors({ temporaryPassword: 'Temporary password must be at least 8 characters long.' });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -144,10 +196,12 @@ export default function UsersManagementPage() {
         temporaryPassword: res.data.temporaryPassword,
       });
 
+      toast.success(`Password reset generated for ${selectedUser.name}`);
       setIsResetOpen(false);
       setTemporaryPassword('');
+      setResetErrors({});
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err.message || 'Password reset failed' });
+      toast.error(err.message || 'Password reset failed');
     } finally {
       setIsSubmitting(false);
     }
@@ -257,24 +311,6 @@ export default function UsersManagementPage() {
           </Button>
         </div>
 
-        {feedback && (
-          <div
-            className={`p-4 rounded-xl flex items-center justify-between border ${
-              feedback.type === 'success'
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-800'
-                : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 text-sm">
-              {feedback.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <AlertCircle className="w-5 h-5 text-rose-600" />}
-              <span>{feedback.text}</span>
-            </div>
-            <button onClick={() => setFeedback(null)} className="text-xs font-bold hover:underline">
-              Dismiss
-            </button>
-          </div>
-        )}
-
         {/* Filter Controls */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -291,7 +327,7 @@ export default function UsersManagementPage() {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300"
+            className="px-3.5 py-2 pr-10 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           >
             <option value="">All Roles</option>
             <option value="ADMIN">Admin</option>
@@ -301,7 +337,7 @@ export default function UsersManagementPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300"
+            className="px-3.5 py-2 pr-10 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           >
             <option value="">All Statuses</option>
             <option value="ACTIVE">Active</option>
@@ -336,12 +372,16 @@ export default function UsersManagementPage() {
         title="Add New Employee"
         description="Create an account and generate initial temporary credentials."
       >
-        <form onSubmit={handleCreateUser} className="space-y-4">
+        <form onSubmit={handleCreateUser} className="space-y-4" noValidate>
           <Input
             label="Full Name"
             placeholder="Jane Doe"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            error={formErrors.name}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (formErrors.name) setFormErrors((p) => { const n = { ...p }; delete n.name; return n; });
+            }}
             required
           />
 
@@ -350,7 +390,11 @@ export default function UsersManagementPage() {
             type="email"
             placeholder="jane.doe@company.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            error={formErrors.email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (formErrors.email) setFormErrors((p) => { const n = { ...p }; delete n.email; return n; });
+            }}
             required
           />
 
@@ -359,14 +403,22 @@ export default function UsersManagementPage() {
               label="Employee ID"
               placeholder="EMP-0100"
               value={employeeId}
-              onChange={(e) => setEmployeeId(e.target.value)}
+              error={formErrors.employeeId}
+              onChange={(e) => {
+                setEmployeeId(e.target.value);
+                if (formErrors.employeeId) setFormErrors((p) => { const n = { ...p }; delete n.employeeId; return n; });
+              }}
               required
             />
             <Input
               label="Department"
               placeholder="Engineering"
               value={department}
-              onChange={(e) => setDepartment(e.target.value)}
+              error={formErrors.department}
+              onChange={(e) => {
+                setDepartment(e.target.value);
+                if (formErrors.department) setFormErrors((p) => { const n = { ...p }; delete n.department; return n; });
+              }}
             />
           </div>
 
@@ -379,13 +431,18 @@ export default function UsersManagementPage() {
                 { value: 'USER', label: 'User / Employee' },
                 { value: 'ADMIN', label: 'Administrator' },
               ]}
+              required
             />
             <Input
               label="Custom Temp Password (Optional)"
               type="text"
               placeholder="Leave blank to auto-generate"
               value={temporaryPassword}
-              onChange={(e) => setTemporaryPassword(e.target.value)}
+              error={formErrors.temporaryPassword}
+              onChange={(e) => {
+                setTemporaryPassword(e.target.value);
+                if (formErrors.temporaryPassword) setFormErrors((p) => { const n = { ...p }; delete n.temporaryPassword; return n; });
+              }}
               minLength={8}
             />
           </div>
@@ -394,8 +451,8 @@ export default function UsersManagementPage() {
             Note: User will be required to change their temporary password upon their first login.
           </p>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setIsAddOpen(false)}>
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setIsAddOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" isLoading={isSubmitting}>
@@ -412,16 +469,20 @@ export default function UsersManagementPage() {
         title={`Reset Password for ${selectedUser?.name}`}
         description="Generates a new temporary password and flags account for mandatory password update."
       >
-        <form onSubmit={handleResetPassword} className="space-y-4">
+        <form onSubmit={handleResetPassword} className="space-y-4" noValidate>
           <Input
             label="Custom Temp Password (Optional)"
             placeholder="Leave blank to auto-generate"
             value={temporaryPassword}
-            onChange={(e) => setTemporaryPassword(e.target.value)}
+            error={resetErrors.temporaryPassword}
+            onChange={(e) => {
+              setTemporaryPassword(e.target.value);
+              if (resetErrors.temporaryPassword) setResetErrors({});
+            }}
             minLength={8}
           />
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setIsResetOpen(false)}>
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setIsResetOpen(false)}>
               Cancel
             </Button>
             <Button variant="danger" type="submit" isLoading={isSubmitting}>

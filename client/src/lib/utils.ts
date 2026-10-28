@@ -1,15 +1,13 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { formatHumanDuration } from './duration';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 export function formatMinutes(minutes: number): string {
-  if (!minutes || minutes <= 0) return '0h 0m';
-  const hrs = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  return `${hrs}h ${mins}m`;
+  return formatHumanDuration(minutes);
 }
 
 export function formatDateDisplay(dateStr: string): string {
@@ -28,17 +26,44 @@ export function formatDateDisplay(dateStr: string): string {
   }
 }
 
-export function formatTimeDisplay(dateOrIso?: string | Date): string {
-  if (!dateOrIso) return '--:--';
+/**
+ * Formats date/timestamp to clean HH:mm:ss (or optional date + HH:mm:ss) in Asia/Kolkata timezone
+ */
+export function formatTimeDisplay(dateOrIso?: string | Date, includeSeconds = true): string {
+  if (!dateOrIso) return '--:--:--';
   try {
     const d = typeof dateOrIso === 'string' ? new Date(dateOrIso) : dateOrIso;
     return d.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
+      second: includeSeconds ? '2-digit' : undefined,
       hour12: true,
       timeZone: 'Asia/Kolkata',
     });
   } catch {
-    return '--:--';
+    return '--:--:--';
+  }
+}
+
+export function formatDateTimeDisplay(dateOrIso?: string | Date): string {
+  if (!dateOrIso) return '--';
+  try {
+    const d = typeof dateOrIso === 'string' ? new Date(dateOrIso) : dateOrIso;
+    const datePart = d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    });
+    const timePart = d.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata',
+    });
+    return `${datePart} ${timePart}`;
+  } catch {
+    return String(dateOrIso);
   }
 }

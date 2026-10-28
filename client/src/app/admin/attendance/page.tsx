@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { formatMinutes, formatDateDisplay, formatTimeDisplay } from '@/lib/utils';
+import { useToast } from '@/context/ToastContext';
 import {
   Clock,
   Download,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 
 export default function AdminAttendancePage() {
+  const { toast } = useToast();
   const [records, setRecords] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,6 +31,7 @@ export default function AdminAttendancePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
+  const [exportingFormat, setExportingFormat] = useState<'xlsx' | 'csv' | null>(null);
 
   const fetchUsers = async () => {
     try {
@@ -72,8 +75,9 @@ export default function AdminAttendancePage() {
 
   const handleExport = async (format: 'xlsx' | 'csv') => {
     try {
+      setExportingFormat(format);
       await api.download(
-        '/reports/attendance',
+        '/attendance/export',
         {
           startDate: startDate || undefined,
           endDate: endDate || undefined,
@@ -82,8 +86,11 @@ export default function AdminAttendancePage() {
         },
         `Attendance_Report_${startDate || 'all'}_to_${endDate || 'all'}.${format}`
       );
+      toast.success(`Attendance report (${format.toUpperCase()}) downloaded successfully.`);
     } catch (err: any) {
-      alert(`Export failed: ${err.message}`);
+      toast.error(`Export failed: ${err.message}`);
+    } finally {
+      setExportingFormat(null);
     }
   };
 
@@ -183,6 +190,8 @@ export default function AdminAttendancePage() {
               variant="outline"
               size="sm"
               onClick={() => handleExport('xlsx')}
+              isLoading={exportingFormat === 'xlsx'}
+              disabled={exportingFormat !== null}
               icon={<FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
             >
               Export Excel
@@ -191,6 +200,8 @@ export default function AdminAttendancePage() {
               variant="outline"
               size="sm"
               onClick={() => handleExport('csv')}
+              isLoading={exportingFormat === 'csv'}
+              disabled={exportingFormat !== null}
               icon={<FileText className="w-4 h-4 text-indigo-600" />}
             >
               Export CSV

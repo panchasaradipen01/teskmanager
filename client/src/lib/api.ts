@@ -14,9 +14,22 @@ export class ApiError extends Error {
   }
 }
 
+let isRefreshing = false;
+let refreshSubscribers: ((success: boolean) => void)[] = [];
+
+function subscribeTokenRefresh(cb: (success: boolean) => void) {
+  refreshSubscribers.push(cb);
+}
+
+function onRefreshed(success: boolean) {
+  refreshSubscribers.forEach((cb) => cb(success));
+  refreshSubscribers = [];
+}
+
 async function request<T = any>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  isRetry = false
 ): Promise<{ success: boolean; data: T; message?: string; meta?: any }> {
   const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
@@ -35,6 +48,51 @@ async function request<T = any>(
 
   const isJson = response.headers.get('content-type')?.includes('application/json');
   const result = isJson ? await response.json() : null;
+
+  // Handle Token Expiry & Automatic Refresh Token Flow
+  if (
+    response.status === 401 &&
+    !isRetry &&
+    !endpoint.includes('/auth/login') &&
+    !endpoint.includes('/auth/refresh') &&
+    !endpoint.includes('/auth/logout')
+  ) {
+    if (!isRefreshing) {
+      isRefreshing = true;
+      try {
+        const refreshRes = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (refreshRes.ok) {
+          isRefreshing = false;
+          onRefreshed(true);
+          // Retry original request
+          return request<T>(endpoint, options, true);
+        } else {
+          isRefreshing = false;
+          onRefreshed(false);
+        }
+      } catch {
+        isRefreshing = false;
+        onRefreshed(false);
+      }
+    } else {
+      // Another request is already refreshing tokens; queue this request
+      return new Promise((resolve, reject) => {
+        subscribeTokenRefresh((success) => {
+          if (success) {
+            resolve(request<T>(endpoint, options, true));
+          } else {
+            const message = result?.error?.message || 'Session expired. Please sign in again.';
+            reject(new ApiError(message, 401, 'UNAUTHORIZED'));
+          }
+        });
+      });
+    }
+  }
 
   if (!response.ok) {
     const message = result?.error?.message || result?.message || `Request failed with status ${response.status}`;
@@ -102,10 +160,16 @@ export const api = {
     const blobUrl = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = blobUrl;
-    link.download = filename;
+    link.setAttribute('download', filename);
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    link.remove();
-    window.URL.revokeObjectURL(blobUrl);
+
+    setTimeout(() => {
+      if (document.body.contains(link)) {
+        document.body.removeChild(link);
+      }
+      window.URL.revokeObjectURL(blobUrl);
+    }, 2000);
   },
 };

@@ -11,7 +11,6 @@ import {
   Clock,
   CheckSquare,
   Calendar,
-  FileBarChart2,
   ShieldCheck,
   LogOut,
   Sun,
@@ -43,7 +42,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     { label: 'Attendance Records', href: '/admin/attendance', icon: Clock },
     { label: 'Correction Approvals', href: '/admin/approvals', icon: CheckSquare },
     { label: 'Task Management', href: '/admin/tasks', icon: Briefcase },
-    { label: 'Reports & Exports', href: '/admin/reports', icon: FileBarChart2 },
     { label: 'System Audit Logs', href: '/admin/audit-logs', icon: ShieldCheck },
   ];
 
@@ -71,9 +69,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors">
-      {/* Mobile Header */}
-      <header className="md:hidden flex items-center justify-between p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40">
+    <div className="h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row transition-colors">
+      {/* Mobile Backdrop */}
+      {mobileMenuOpen && (
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-xs md:hidden"
+        />
+      )}
+
+      {/* Mobile Top Header */}
+      <header className="md:hidden shrink-0 flex items-center justify-between p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-30">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-xs">
             TP
@@ -99,14 +105,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         </div>
       </header>
 
-      {/* Sidebar Navigation */}
+      {/* Sidebar Navigation - Independent Full-Height Scrollable Column */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col transition-transform duration-200 ease-in-out md:translate-x-0 md:static ${
-          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed inset-y-0 left-0 z-50 w-64 h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
+          mobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         }`}
       >
-        {/* Brand Header */}
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
+        {/* Brand Header - Pinned at top of sidebar */}
+        <div className="shrink-0 p-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-sm shadow-indigo-500/20">
               TP
@@ -128,7 +134,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           </button>
         </div>
 
-        {/* Navigation Links */}
+        {/* Navigation Links - Scrollable middle section */}
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           <div className="px-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
             {isAdmin ? 'Administration' : 'Employee Workspace'}
@@ -174,8 +180,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           )}
         </div>
 
-        {/* User Profile Card & Logout */}
-        <div className="p-3 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40">
+        {/* User Profile Card & Logout - Pinned securely at bottom of sidebar */}
+        <div className="shrink-0 p-3 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40">
           <div className="flex items-center gap-3 p-2 rounded-xl bg-white dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 shadow-xs">
             <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-sm shrink-0">
               {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
@@ -191,7 +197,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 >
                   {user?.role}
                 </Badge>
-                <span className="text-[10px] text-slate-400 truncate">
+                <span className="text-[10px] text-slate-400 truncate font-mono">
                   {user?.employeeId}
                 </span>
               </div>
@@ -207,10 +213,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header Bar */}
-        <header className="hidden md:flex items-center justify-between px-8 py-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30">
+      {/* Main Content Area - Independent Full-Height Scrollable Column */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* Top Header Bar - Pinned at top */}
+        <header className="shrink-0 hidden md:flex items-center justify-between px-8 py-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 z-30">
           <div className="flex items-center gap-3">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
               Business Date (Asia/Kolkata):
@@ -223,7 +229,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           <div className="flex items-center gap-3">
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               title="Toggle theme"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
@@ -240,8 +246,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">{children}</main>
+        {/* Page Content - Scrolls independently */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
+          <div className="max-w-7xl mx-auto w-full space-y-6">{children}</div>
+        </main>
       </div>
     </div>
   );

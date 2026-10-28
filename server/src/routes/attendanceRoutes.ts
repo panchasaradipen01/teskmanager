@@ -7,6 +7,7 @@ import {
   listCorrections,
   reviewCorrection,
   listAttendance,
+  exportAttendance,
 } from '../controllers/attendanceController.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireRole } from '../middleware/roleGuard.js';
@@ -19,6 +20,7 @@ router.use(authenticate);
 router.get('/today', getTodayStatus);
 router.post('/punch-in', punchIn);
 router.post('/punch-out', punchOut);
+router.get('/export', requireRole(ROLES.ADMIN), exportAttendance);
 router.get('/', listAttendance);
 
 // Corrections

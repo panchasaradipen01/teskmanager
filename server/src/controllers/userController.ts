@@ -241,19 +241,25 @@ export const updateUserStatus = async (
   }
 };
 
+const adminResetPasswordSchema = z.object({
+  temporaryPassword: z.string().min(8, 'Temporary password must be at least 8 characters long').optional(),
+});
+
 export const adminResetPassword = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
+    const parsed = adminResetPasswordSchema.parse(req.body);
+
     const user = await User.findById(req.params.id);
     if (!user) {
       sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
       return;
     }
 
-    const newTempPassword = req.body.temporaryPassword || `Reset@${Math.floor(100000 + Math.random() * 900000)}`;
+    const newTempPassword = parsed.temporaryPassword || `Reset@${Math.floor(100000 + Math.random() * 900000)}`;
     const salt = await bcrypt.genSalt(10);
     user.passwordHash = await bcrypt.hash(newTempPassword, salt);
     user.mustChangePassword = true;

@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: taskpulse-mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_DATABASE: taskpulse
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: taskpulse-server
+    restart: always
+    depends_on:
+      - mongodb
+    environment:
+      PORT: 5001
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongodb:27017/taskpulse
+      CLIENT_URL: ${CLIENT_URL:-https://taskpulse.pages.dev}
+      JWT_SECRET: ${JWT_SECRET:-prod_jwt_secret_taskpulse_2026_change_me}
+      ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-prod_access_secret_taskpulse_2026_change_me}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:-prod_refresh_secret_taskpulse_2026_change_me}
+      COOKIE_SECURE: 'true'
+      COOKIE_SAME_SITE: 'none'
+    ports:
+      - '5001:5001'
+
+volumes:
+  mongo-data:
+

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, Clock, CheckCircle2, AlertCircle, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, CheckCircle2, AlertCircle, FileText, Lock } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { Badge } from './Badge';
@@ -27,6 +27,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   isLoading = false,
 }) => {
   const [selectedDay, setSelectedDay] = useState<CalendarDayData | null>(null);
+  const [todayStr, setTodayStr] = useState('');
+  const [yesterdayStr, setYesterdayStr] = useState('');
+
+  React.useEffect(() => {
+    const now = new Date();
+    const t = now.toISOString().split('T')[0];
+    const y = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    setTodayStr(t);
+    setYesterdayStr(y);
+  }, []);
 
   const [dateInfo, setDateInfo] = useState<{
     startingDayIndex: number;
@@ -138,24 +148,35 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           const hasCorrection = dayInfo?.hasPendingCorrection;
 
           const isOverlogged = taskMins > attMins + 15 && attMins > 0;
+          const isPastLocked = yesterdayStr ? dateStr < yesterdayStr : false;
+          const isToday = dateStr === todayStr;
 
           return (
             <div
               key={dateStr}
               onClick={() => dayInfo && setSelectedDay(dayInfo)}
-              className={`min-h-[95px] p-2 rounded-lg border transition-all select-none cursor-pointer flex flex-col justify-between ${
+              className={`min-h-[95px] p-2 rounded-lg border transition-all select-none flex flex-col justify-between ${
                 dayInfo
-                  ? 'border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-xs bg-white dark:bg-slate-900'
-                  : 'border-slate-100 dark:border-slate-800/40 bg-slate-50/30 dark:bg-slate-900/40 text-slate-400'
-              }`}
+                  ? 'cursor-pointer border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500 hover:shadow-xs bg-white dark:bg-slate-900'
+                  : isPastLocked
+                  ? 'border-slate-100 dark:border-slate-800/30 bg-slate-50/20 dark:bg-slate-900/20 opacity-60 cursor-default'
+                  : 'border-slate-100 dark:border-slate-800/40 bg-slate-50/30 dark:bg-slate-900/40 text-slate-400 cursor-default'
+              } ${isToday ? 'ring-2 ring-indigo-500/50' : ''}`}
             >
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                <span className={`text-xs font-bold ${isToday ? 'text-indigo-600 dark:text-indigo-400 font-extrabold' : 'text-slate-700 dark:text-slate-300'}`}>
                   {dayNum}
                 </span>
-                {hasCorrection && (
-                  <span className="w-2 h-2 rounded-full bg-amber-500" title="Pending correction" />
-                )}
+                <div className="flex items-center gap-1">
+                  {isPastLocked && (
+                    <span title="Past date locked for edits">
+                      <Lock className="w-2.5 h-2.5 text-slate-400 dark:text-slate-600" />
+                    </span>
+                  )}
+                  {hasCorrection && (
+                    <span className="w-2 h-2 rounded-full bg-amber-500" title="Pending correction" />
+                  )}
+                </div>
               </div>
 
               {att && (
@@ -198,6 +219,13 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
           maxWidth="lg"
         >
           <div className="space-y-4">
+            {yesterdayStr && selectedDay.date < yesterdayStr && (
+              <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-xs text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                <span>Historical record (locked): Direct time entry and punch adjustments are permitted only for today and yesterday.</span>
+              </div>
+            )}
+
             {/* Attendance Section */}
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">

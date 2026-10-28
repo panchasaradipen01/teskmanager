@@ -5,24 +5,42 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
-import { ShieldCheck, Lock, Mail, AlertCircle, Info } from 'lucide-react';
+import { ShieldCheck, AlertCircle } from 'lucide-react';
+import { loginSchema, getZodFieldErrors } from '@/lib/validations';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [globalError, setGlobalError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setGlobalError(null);
+    setFieldErrors({});
+
+    const validation = loginSchema.safeParse({ email: email.trim(), password });
+    if (!validation.success) {
+      const errors = getZodFieldErrors(validation.error);
+      setFieldErrors(errors);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      await login(email.trim(), password);
     } catch (err: any) {
-      setError(err.message || 'Failed to authenticate. Please verify your credentials.');
+      if (err.details && Array.isArray(err.details)) {
+        const backendErrors: Record<string, string> = {};
+        err.details.forEach((d: any) => {
+          if (d.field) backendErrors[d.field] = d.message;
+        });
+        setFieldErrors(backendErrors);
+      }
+      setGlobalError(err.message || 'Failed to authenticate. Please verify your credentials.');
     } finally {
       setIsLoading(false);
     }
@@ -31,7 +49,8 @@ export default function LoginPage() {
   const fillAdminCredentials = () => {
     setEmail('admin@taskpulse.com');
     setPassword('Admin@TaskPulse2026!');
-    setError(null);
+    setGlobalError(null);
+    setFieldErrors({});
   };
 
   return (
@@ -60,20 +79,30 @@ export default function LoginPage() {
           </CardHeader>
 
           <CardContent>
-            {error && (
+            {globalError && (
               <div className="mb-4 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 flex items-start gap-2.5 text-xs text-rose-700 dark:text-rose-300">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <span>{globalError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <Input
                 label="Email Address"
                 type="email"
                 placeholder="you@company.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                error={fieldErrors.email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (fieldErrors.email) {
+                    setFieldErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.email;
+                      return next;
+                    });
+                  }
+                }}
                 required
                 autoComplete="email"
               />
@@ -83,7 +112,17 @@ export default function LoginPage() {
                 type="password"
                 placeholder="••••••••••••"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                error={fieldErrors.password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (fieldErrors.password) {
+                    setFieldErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.password;
+                      return next;
+                    });
+                  }
+                }}
                 required
                 autoComplete="current-password"
               />
@@ -122,7 +161,7 @@ export default function LoginPage() {
 
         {/* Security Footer */}
         <p className="text-center text-xs text-slate-400 dark:text-slate-500">
-          Secure HTTP-only session cookies &bull; Asia/Kolkata Business Timezone
+          Secure Access & Refresh Token Authentication &bull; Asia/Kolkata Business Timezone
         </p>
       </div>
     </div>

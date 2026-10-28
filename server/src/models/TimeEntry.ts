@@ -43,7 +43,7 @@ const TimeEntrySchema = new Schema<ITimeEntry>(
       type: Number,
       required: true,
       min: 1,
-      max: 1440, // 24 hours max per entry
+      max: 10080, // Up to 1 week (168 hours)
     },
     startTime: {
       type: Date,

@@ -14,7 +14,6 @@ import attendanceRoutes from './routes/attendanceRoutes.js';
 import taskRoutes from './routes/taskRoutes.js';
 import timeEntryRoutes from './routes/timeEntryRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
-import reportRoutes from './routes/reportRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 
 export const createApp = (): express.Application => {
@@ -28,6 +27,7 @@ export const createApp = (): express.Application => {
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
+      exposedHeaders: ['Content-Disposition'],
     })
   );
 
@@ -61,7 +61,6 @@ export const createApp = (): express.Application => {
   app.use('/api/tasks', taskRoutes);
   app.use('/api/time-entries', timeEntryRoutes);
   app.use('/api/dashboard', dashboardRoutes);
-  app.use('/api/reports', reportRoutes);
   app.use('/api/audit-logs', auditRoutes);
 
   // 404 Route Handler

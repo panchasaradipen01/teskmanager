@@ -28,9 +28,9 @@ export const authenticate = async (
   try {
     let token: string | undefined;
 
-    // 1. Check HTTP-only cookie
-    if (req.cookies && req.cookies[ENV.COOKIE_NAME]) {
-      token = req.cookies[ENV.COOKIE_NAME];
+    // 1. Check HTTP-only cookie (ACCESS_COOKIE_NAME or fallback to COOKIE_NAME)
+    if (req.cookies && (req.cookies[ENV.ACCESS_COOKIE_NAME] || req.cookies[ENV.COOKIE_NAME])) {
+      token = req.cookies[ENV.ACCESS_COOKIE_NAME] || req.cookies[ENV.COOKIE_NAME];
     }
     // 2. Fallback to Authorization: Bearer <token>
     else if (
@@ -45,8 +45,17 @@ export const authenticate = async (
       return;
     }
 
-    // Verify token
-    const decoded = jwt.verify(token, ENV.JWT_SECRET) as JwtPayload;
+    // Verify token with ACCESS_TOKEN_SECRET (or JWT_SECRET)
+    let decoded: JwtPayload;
+    try {
+      decoded = jwt.verify(token, ENV.ACCESS_TOKEN_SECRET) as JwtPayload;
+    } catch (err: any) {
+      if (ENV.ACCESS_TOKEN_SECRET !== ENV.JWT_SECRET) {
+        decoded = jwt.verify(token, ENV.JWT_SECRET) as JwtPayload;
+      } else {
+        throw err;
+      }
+    }
 
     // Fetch user from DB
     const user = await User.findById(decoded.userId);

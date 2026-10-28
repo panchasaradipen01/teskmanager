@@ -7,30 +7,56 @@ type Theme = 'light' | 'dark';
 interface ThemeContextType {
   theme: Theme;
   toggleTheme: () => void;
+  setMode: (mode: Theme) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setTheme] = useState<Theme>('light');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('taskpulse_theme') as Theme;
-    if (saved) {
-      setTheme(saved);
-      document.documentElement.classList.toggle('dark', saved === 'dark');
+    const saved = localStorage.getItem('taskpulse_theme') as Theme | null;
+    let initialTheme: Theme = 'light';
+
+    if (saved === 'dark' || saved === 'light') {
+      initialTheme = saved;
+    } else if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      initialTheme = 'dark';
     }
+
+    setTheme(initialTheme);
+    applyTheme(initialTheme);
+    setMounted(true);
   }, []);
 
+  const applyTheme = (t: Theme) => {
+    const root = document.documentElement;
+    if (t === 'dark') {
+      root.classList.add('dark');
+      root.style.colorScheme = 'dark';
+    } else {
+      root.classList.remove('dark');
+      root.style.colorScheme = 'light';
+    }
+  };
+
   const toggleTheme = () => {
-    const next = theme === 'light' ? 'dark' : 'light';
+    const next: Theme = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
     localStorage.setItem('taskpulse_theme', next);
-    document.documentElement.classList.toggle('dark', next === 'dark');
+    applyTheme(next);
+  };
+
+  const setMode = (mode: Theme) => {
+    setTheme(mode);
+    localStorage.setItem('taskpulse_theme', mode);
+    applyTheme(mode);
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, setMode }}>
       {children}
     </ThemeContext.Provider>
   );

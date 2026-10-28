@@ -7,6 +7,7 @@ export interface IUser extends Document {
   name: string;
   email: string;
   passwordHash: string;
+  refreshTokenHash?: string;
   role: UserRole;
   status: UserStatus;
   department?: string;
@@ -42,6 +43,9 @@ const UserSchema = new Schema<IUser>(
       type: String,
       required: true,
     },
+    refreshTokenHash: {
+      type: String,
+    },
     role: {
       type: String,
       enum: Object.values(ROLES),
@@ -73,6 +77,7 @@ const UserSchema = new Schema<IUser>(
     toJSON: {
       transform: (_, ret) => {
         delete (ret as any).passwordHash;
+        delete (ret as any).refreshTokenHash;
         return ret;
       },
     },

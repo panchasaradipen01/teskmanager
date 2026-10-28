@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useToast } from '@/context/ToastContext';
 import { api } from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -9,7 +10,10 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Textarea } from '@/components/ui/Textarea';
 import { formatMinutes } from '@/lib/utils';
+import { parseDurationString, formatHumanDuration } from '@/lib/duration';
+import { createTaskSchema, logTimeSchema, getZodFieldErrors } from '@/lib/validations';
 import {
   PlusCircle,
   Clock,
@@ -24,6 +28,7 @@ import {
 } from 'lucide-react';
 
 export default function MyTasksPage() {
+  const toast = useToast();
   const [tasks, setTasks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -40,6 +45,8 @@ export default function MyTasksPage() {
   const [taskDescription, setTaskDescription] = useState('');
   const [taskPriority, setTaskPriority] = useState('MEDIUM');
   const [taskStatus, setTaskStatus] = useState('TODO');
+  const [taskErrors, setTaskErrors] = useState<Record<string, string>>({});
+  const [logTimeErrors, setLogTimeErrors] = useState<Record<string, string>>({});
 
   // Log Time form states
   const [todayStr, setTodayStr] = useState('');
@@ -55,12 +62,13 @@ export default function MyTasksPage() {
     setYesterdayStr(yStr);
     setWorkDate(t);
   }, []);
-  const [durationMinutes, setDurationMinutes] = useState(60);
+
+  const [durationInput, setDurationInput] = useState('1h 0m');
   const [workPerformed, setWorkPerformed] = useState('');
   const [backdateReason, setBackdateReason] = useState('');
-
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const parsedMinutes = parseDurationString(durationInput);
 
   const fetchTasks = useCallback(async () => {
     setIsLoading(true);
@@ -84,23 +92,44 @@ export default function MyTasksPage() {
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    setTaskErrors({});
+
+    const validation = createTaskSchema.safeParse({
+      title: taskTitle.trim(),
+      description: taskDescription.trim(),
+      priority: taskPriority,
+      status: taskStatus,
+    });
+
+    if (!validation.success) {
+      setTaskErrors(getZodFieldErrors(validation.error));
+      return;
+    }
+
     setIsSubmitting(true);
-    setFeedback(null);
 
     try {
       await api.post('/tasks', {
-        title: taskTitle,
-        description: taskDescription,
+        title: taskTitle.trim(),
+        description: taskDescription.trim(),
         priority: taskPriority,
         status: taskStatus,
       });
       setIsCreateOpen(false);
       setTaskTitle('');
       setTaskDescription('');
-      setFeedback({ type: 'success', text: 'Task created successfully!' });
+      setTaskErrors({});
+      toast.success('Task created successfully!');
       await fetchTasks();
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err.message || 'Failed to create task' });
+      if (err.details && Array.isArray(err.details)) {
+        const bErrors: Record<string, string> = {};
+        err.details.forEach((d: any) => {
+          if (d.field) bErrors[d.field] = d.message;
+        });
+        setTaskErrors(bErrors);
+      }
+      toast.error(err.message || 'Failed to create task');
     } finally {
       setIsSubmitting(false);
     }
@@ -109,21 +138,42 @@ export default function MyTasksPage() {
   const handleUpdateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeTask) return;
+    setTaskErrors({});
+
+    const validation = createTaskSchema.safeParse({
+      title: taskTitle.trim(),
+      description: taskDescription.trim(),
+      priority: taskPriority,
+      status: taskStatus,
+    });
+
+    if (!validation.success) {
+      setTaskErrors(getZodFieldErrors(validation.error));
+      return;
+    }
+
     setIsSubmitting(true);
-    setFeedback(null);
 
     try {
       await api.patch(`/tasks/${activeTask._id}`, {
-        title: taskTitle,
-        description: taskDescription,
+        title: taskTitle.trim(),
+        description: taskDescription.trim(),
         priority: taskPriority,
         status: taskStatus,
       });
       setIsEditOpen(false);
-      setFeedback({ type: 'success', text: 'Task updated successfully!' });
+      setTaskErrors({});
+      toast.success('Task updated successfully!');
       await fetchTasks();
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err.message || 'Failed to update task' });
+      if (err.details && Array.isArray(err.details)) {
+        const bErrors: Record<string, string> = {};
+        err.details.forEach((d: any) => {
+          if (d.field) bErrors[d.field] = d.message;
+        });
+        setTaskErrors(bErrors);
+      }
+      toast.error(err.message || 'Failed to update task');
     } finally {
       setIsSubmitting(false);
     }
@@ -132,23 +182,60 @@ export default function MyTasksPage() {
   const handleLogTime = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeTask) return;
+    setLogTimeErrors({});
+
+    const validation = logTimeSchema.safeParse({
+      taskId: activeTask._id,
+      workDate,
+      durationMinutes: parsedMinutes,
+      description: workPerformed.trim(),
+      backdateReason: workDate === yesterdayStr ? backdateReason.trim() : undefined,
+    });
+
+    if (!validation.success) {
+      setLogTimeErrors(getZodFieldErrors(validation.error));
+      return;
+    }
+
+    if (workDate < yesterdayStr) {
+      setLogTimeErrors({ workDate: 'Logging time is limited to today and yesterday. Past dates beyond -1 day are locked.' });
+      return;
+    }
+
+    if (workDate > todayStr) {
+      setLogTimeErrors({ workDate: 'Cannot record time entries for future dates.' });
+      return;
+    }
+
+    if (workDate === yesterdayStr && (!backdateReason || backdateReason.trim().length < 5)) {
+      setLogTimeErrors({ backdateReason: 'A mandatory explanation note (at least 5 characters) is required when recording time for yesterday.' });
+      return;
+    }
+
     setIsSubmitting(true);
-    setFeedback(null);
 
     try {
       await api.post('/time-entries', {
         taskId: activeTask._id,
         workDate,
-        durationMinutes: Number(durationMinutes),
-        description: workPerformed,
-        backdateReason: workDate === yesterdayStr ? backdateReason : undefined,
+        durationMinutes: parsedMinutes,
+        description: workPerformed.trim(),
+        backdateReason: workDate === yesterdayStr ? backdateReason.trim() : undefined,
       });
       setIsLogTimeOpen(false);
       setWorkPerformed('');
       setBackdateReason('');
-      setFeedback({ type: 'success', text: 'Time logged successfully!' });
+      setLogTimeErrors({});
+      toast.success(`Logged ${formatHumanDuration(parsedMinutes)} successfully!`);
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err.message || 'Failed to log time' });
+      if (err.details && Array.isArray(err.details)) {
+        const bErrors: Record<string, string> = {};
+        err.details.forEach((d: any) => {
+          if (d.field) bErrors[d.field] = d.message;
+        });
+        setLogTimeErrors(bErrors);
+      }
+      toast.error(err.message || 'Failed to log time');
     } finally {
       setIsSubmitting(false);
     }
@@ -160,15 +247,17 @@ export default function MyTasksPage() {
     setTaskDescription(task.description);
     setTaskPriority(task.priority);
     setTaskStatus(task.status);
+    setTaskErrors({});
     setIsEditOpen(true);
   };
 
   const openLogTime = (task: any) => {
     setActiveTask(task);
     setWorkDate(todayStr);
-    setDurationMinutes(60);
+    setDurationInput('1h 0m');
     setWorkPerformed('');
     setBackdateReason('');
+    setLogTimeErrors({});
     setIsLogTimeOpen(true);
   };
 
@@ -227,24 +316,6 @@ export default function MyTasksPage() {
           </Button>
         </div>
 
-        {feedback && (
-          <div
-            className={`p-4 rounded-xl flex items-center justify-between border ${
-              feedback.type === 'success'
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-800'
-                : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 text-sm">
-              {feedback.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <AlertCircle className="w-5 h-5 text-rose-600" />}
-              <span>{feedback.text}</span>
-            </div>
-            <button onClick={() => setFeedback(null)} className="text-xs font-bold hover:underline">
-              Dismiss
-            </button>
-          </div>
-        )}
-
         {/* Filters Bar */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -261,7 +332,7 @@ export default function MyTasksPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300"
+            className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300"
           >
             <option value="">All Statuses</option>
             <option value="TODO">To Do</option>
@@ -274,8 +345,8 @@ export default function MyTasksPage() {
         {/* Task Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {tasks.map((task) => (
-            <Card key={task._id} className="flex flex-col justify-between hover:shadow-md transition-shadow">
-              <CardContent className="p-5 space-y-3">
+            <Card key={task._id} className="flex flex-col justify-between hover:shadow-md transition-shadow h-full">
+              <CardContent className="p-5 flex-1 space-y-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {statusBadge(task.status)}
@@ -302,16 +373,16 @@ export default function MyTasksPage() {
                 </div>
               </CardContent>
 
-              <div className="px-5 pb-5 pt-0 border-t border-slate-100 dark:border-slate-800/80 mt-2 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">
+              <div className="px-5 py-3.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between mt-auto bg-slate-50/50 dark:bg-slate-900/50 rounded-b-xl">
+                <span className="inline-flex items-center text-xs font-medium text-slate-500 dark:text-slate-400">
                   {new Date(task.createdAt).toLocaleDateString()}
                 </span>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => openLogTime(task)}
-                  icon={<Clock className="w-3.5 h-3.5" />}
-                  className="text-xs"
+                  icon={<Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />}
+                  className="text-xs bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 dark:text-indigo-300 dark:border-indigo-800/80 shadow-2xs font-semibold"
                 >
                   Log Time
                 </Button>
@@ -340,12 +411,16 @@ export default function MyTasksPage() {
         title="Create New Task"
         description="Add a task with actionable deliverables."
       >
-        <form onSubmit={handleCreateTask} className="space-y-4">
+        <form onSubmit={handleCreateTask} className="space-y-4" noValidate>
           <Input
             label="Task Title"
             placeholder="e.g. Design User Dashboard UI components"
             value={taskTitle}
-            onChange={(e) => setTaskTitle(e.target.value)}
+            error={taskErrors.title}
+            onChange={(e) => {
+              setTaskTitle(e.target.value);
+              if (taskErrors.title) setTaskErrors((p) => { const n = { ...p }; delete n.title; return n; });
+            }}
             required
           />
 
@@ -360,6 +435,7 @@ export default function MyTasksPage() {
                 { value: 'HIGH', label: 'High' },
                 { value: 'URGENT', label: 'Urgent' },
               ]}
+              required
             />
             <Select
               label="Status"
@@ -371,25 +447,25 @@ export default function MyTasksPage() {
                 { value: 'BLOCKED', label: 'Blocked' },
                 { value: 'COMPLETED', label: 'Completed' },
               ]}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              Task Description
-            </label>
-            <textarea
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              rows={4}
-              placeholder="Detailed description of objectives, technical notes, or steps..."
-              value={taskDescription}
-              onChange={(e) => setTaskDescription(e.target.value)}
               required
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setIsCreateOpen(false)}>
+          <Textarea
+            label="Task Description"
+            rows={4}
+            placeholder="Detailed description of objectives, technical notes, or steps..."
+            value={taskDescription}
+            error={taskErrors.description}
+            onChange={(e) => {
+              setTaskDescription(e.target.value);
+              if (taskErrors.description) setTaskErrors((p) => { const n = { ...p }; delete n.description; return n; });
+            }}
+            required
+          />
+
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setIsCreateOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" isLoading={isSubmitting}>
@@ -406,11 +482,15 @@ export default function MyTasksPage() {
         title="Edit Task"
         description="Update task details or change completion status."
       >
-        <form onSubmit={handleUpdateTask} className="space-y-4">
+        <form onSubmit={handleUpdateTask} className="space-y-4" noValidate>
           <Input
             label="Task Title"
             value={taskTitle}
-            onChange={(e) => setTaskTitle(e.target.value)}
+            error={taskErrors.title}
+            onChange={(e) => {
+              setTaskTitle(e.target.value);
+              if (taskErrors.title) setTaskErrors((p) => { const n = { ...p }; delete n.title; return n; });
+            }}
             required
           />
 
@@ -425,6 +505,7 @@ export default function MyTasksPage() {
                 { value: 'HIGH', label: 'High' },
                 { value: 'URGENT', label: 'Urgent' },
               ]}
+              required
             />
             <Select
               label="Status"
@@ -436,24 +517,24 @@ export default function MyTasksPage() {
                 { value: 'BLOCKED', label: 'Blocked' },
                 { value: 'COMPLETED', label: 'Completed' },
               ]}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              Task Description
-            </label>
-            <textarea
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              rows={4}
-              value={taskDescription}
-              onChange={(e) => setTaskDescription(e.target.value)}
               required
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setIsEditOpen(false)}>
+          <Textarea
+            label="Task Description"
+            rows={4}
+            value={taskDescription}
+            error={taskErrors.description}
+            onChange={(e) => {
+              setTaskDescription(e.target.value);
+              if (taskErrors.description) setTaskErrors((p) => { const n = { ...p }; delete n.description; return n; });
+            }}
+            required
+          />
+
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setIsEditOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" isLoading={isSubmitting}>
@@ -463,71 +544,83 @@ export default function MyTasksPage() {
         </form>
       </Modal>
 
-      {/* Log Time Modal */}
+      {/* Log Time Modal with 1w 1d 1h 10m support */}
       <Modal
         isOpen={isLogTimeOpen}
         onClose={() => setIsLogTimeOpen(false)}
         title={`Log Work Duration — ${activeTask?.title || 'Task'}`}
         description="Record the time spent and deliverables achieved."
       >
-        <form onSubmit={handleLogTime} className="space-y-4">
+        <form onSubmit={handleLogTime} className="space-y-4" noValidate>
           <Input
             label="Work Date (YYYY-MM-DD)"
             type="date"
+            min={yesterdayStr}
             max={todayStr}
             value={workDate}
-            onChange={(e) => setWorkDate(e.target.value)}
-            helperText="Direct logging permitted for today or yesterday."
+            error={logTimeErrors.workDate}
+            onChange={(e) => {
+              setWorkDate(e.target.value);
+              if (logTimeErrors.workDate) setLogTimeErrors((p) => { const n = { ...p }; delete n.workDate; return n; });
+            }}
+            helperText="Logging permitted only for today or yesterday. Past dates beyond -1 day are locked."
             required
           />
 
           <Input
-            label="Duration in Minutes"
-            type="number"
-            min={1}
-            max={1440}
-            value={durationMinutes}
-            onChange={(e) => setDurationMinutes(Number(e.target.value))}
-            helperText={`Calculated duration: ${formatMinutes(durationMinutes)}`}
+            label="Duration (e.g. 1h 0m, 1d 1h 10m, 1w 1d 1h 10m)"
+            type="text"
+            placeholder="e.g. 1h 0m, 1d 1h 10m, 45m"
+            value={durationInput}
+            error={logTimeErrors.durationMinutes}
+            onChange={(e) => {
+              setDurationInput(e.target.value);
+              if (logTimeErrors.durationMinutes) setLogTimeErrors((p) => { const n = { ...p }; delete n.durationMinutes; return n; });
+            }}
+            helperText={
+              parsedMinutes > 0
+                ? `Interpreted as: ${formatHumanDuration(parsedMinutes)} (${parsedMinutes} minutes)`
+                : 'Enter duration using w, d, h, m (e.g. 1w 1d 1h 10m, 1d 2h, 45m)'
+            }
             required
           />
 
           {workDate === yesterdayStr && (
-            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 space-y-1.5">
-              <label className="block text-xs font-bold text-amber-800 dark:text-amber-300 uppercase">
-                Mandatory Previous-Day Explanation Note
-              </label>
-              <textarea
-                className="w-full rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 p-2 text-xs focus:outline-none"
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 space-y-1.5">
+              <Textarea
+                label="Mandatory Previous-Day Explanation Note"
                 rows={2}
                 placeholder="Explain why this entry is being logged for yesterday..."
                 value={backdateReason}
-                onChange={(e) => setBackdateReason(e.target.value)}
+                error={logTimeErrors.backdateReason}
+                onChange={(e) => {
+                  setBackdateReason(e.target.value);
+                  if (logTimeErrors.backdateReason) setLogTimeErrors((p) => { const n = { ...p }; delete n.backdateReason; return n; });
+                }}
                 minLength={5}
                 required
               />
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              Work Performed
-            </label>
-            <textarea
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              rows={3}
-              placeholder="What specifically did you work on or complete?"
-              value={workPerformed}
-              onChange={(e) => setWorkPerformed(e.target.value)}
-              required
-            />
-          </div>
+          <Textarea
+            label="Work Description"
+            rows={3}
+            placeholder="What specifically did you work on or complete?"
+            value={workPerformed}
+            error={logTimeErrors.description}
+            onChange={(e) => {
+              setWorkPerformed(e.target.value);
+              if (logTimeErrors.description) setLogTimeErrors((p) => { const n = { ...p }; delete n.description; return n; });
+            }}
+            required
+          />
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setIsLogTimeOpen(false)}>
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setIsLogTimeOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" isLoading={isSubmitting}>
+            <Button variant="primary" type="submit" isLoading={isSubmitting} disabled={parsedMinutes <= 0}>
               Save Time Entry
             </Button>
           </div>

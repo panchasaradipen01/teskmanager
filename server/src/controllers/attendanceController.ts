@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
+import ExcelJS from 'exceljs';
 import { Attendance } from '../models/Attendance.js';
 import { AttendanceCorrection } from '../models/AttendanceCorrection.js';
 import { ATTENDANCE_STATUS, CORRECTION_STATUS, AUDIT_ACTIONS, ROLES } from '../constants/index.js';
@@ -46,7 +47,7 @@ export const punchIn = async (
         sendError(
           res,
           'You are already punched in for today.',
-          400,
+          409,
           'ALREADY_PUNCHED_IN',
           { punchInAt: existing.punchInAt }
         );
@@ -55,7 +56,7 @@ export const punchIn = async (
       sendError(
         res,
         'You have already completed your attendance session for today.',
-        400,
+        409,
         'SESSION_ALREADY_COMPLETED'
       );
       return;
@@ -164,6 +165,7 @@ export const getTodayStatus = async (
       today,
       attendance: attendance || null,
       isPunchedIn: !!attendance && !attendance.punchOutAt,
+      hasPunchedIn: !!attendance,
       isCompleted: !!attendance && !!attendance.punchOutAt,
     });
   } catch (error) {
@@ -191,6 +193,18 @@ export const requestCorrection = async (
         'Attendance corrections cannot be submitted for future dates.',
         400,
         'FUTURE_DATE_INVALID'
+      );
+      return;
+    }
+
+    // Business Rule: Cannot request correction for past dates older than yesterday (-1 day)
+    const yesterday = getYesterdayDateString();
+    if (parsed.targetDate < yesterday) {
+      sendError(
+        res,
+        'Attendance corrections are limited to yesterday and today. Earlier dates are locked.',
+        400,
+        'PAST_DATE_LOCKED'
       );
       return;
     }
@@ -438,6 +452,142 @@ export const listAttendance = async (
       total,
       totalPages: Math.ceil(total / limit),
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const formatDurationHuman = (mins: number): string => {
+  if (!mins || mins <= 0) return '0m';
+  const weeks = Math.floor(mins / 2400);
+  const remW = mins % 2400;
+  const days = Math.floor(remW / 480);
+  const remD = remW % 480;
+  const hours = Math.floor(remD / 60);
+  const minutes = remD % 60;
+  const parts: string[] = [];
+  if (weeks > 0) parts.push(`${weeks}w`);
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+  return parts.join(' ');
+};
+
+const formatHms = (dateVal?: Date | string | null): string => {
+  if (!dateVal) return 'N/A';
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return 'N/A';
+    return d.toLocaleTimeString('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return 'N/A';
+  }
+};
+
+/**
+ * EXPORT ATTENDANCE RECORDS (Excel or CSV)
+ */
+export const exportAttendance = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
+    const format = (req.query.format as string) || 'xlsx';
+    const queryUserId = req.query.userId as string;
+
+    const query: Record<string, any> = {};
+    if (req.user?.role !== ROLES.ADMIN) {
+      query.userId = req.user!._id;
+    } else if (queryUserId && mongoose.Types.ObjectId.isValid(queryUserId)) {
+      query.userId = queryUserId;
+    }
+
+    if (startDate && endDate) {
+      query.attendanceDate = { $gte: startDate, $lte: endDate };
+    } else if (startDate) {
+      query.attendanceDate = { $gte: startDate };
+    } else if (endDate) {
+      query.attendanceDate = { $lte: endDate };
+    }
+
+    const records = await Attendance.find(query)
+      .populate('userId', 'name email employeeId department')
+      .sort({ attendanceDate: -1 });
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'TaskPulse';
+    const sheet = workbook.addWorksheet('Attendance Report');
+
+    sheet.columns = [
+      { header: 'Employee ID', key: 'empId', width: 15 },
+      { header: 'Employee Name', key: 'name', width: 25 },
+      { header: 'Email', key: 'email', width: 30 },
+      { header: 'Department', key: 'dept', width: 18 },
+      { header: 'Date', key: 'date', width: 14 },
+      { header: 'Punch In (HH:mm:ss)', key: 'punchIn', width: 22 },
+      { header: 'Punch Out (HH:mm:ss)', key: 'punchOut', width: 22 },
+      { header: 'Formatted Duration', key: 'durationHuman', width: 20 },
+      { header: 'Duration (Minutes)', key: 'durationMin', width: 18 },
+      { header: 'Duration (Hours)', key: 'durationHrs', width: 16 },
+      { header: 'Status', key: 'status', width: 14 },
+      { header: 'Source', key: 'source', width: 14 },
+    ];
+
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4F46E5' },
+    };
+
+    records.forEach((record: any) => {
+      sheet.addRow({
+        empId: record.userId?.employeeId || 'N/A',
+        name: record.userId?.name || 'N/A',
+        email: record.userId?.email || 'N/A',
+        dept: record.userId?.department || 'N/A',
+        date: record.attendanceDate,
+        punchIn: formatHms(record.punchInAt),
+        punchOut: formatHms(record.punchOutAt),
+        durationHuman: formatDurationHuman(record.durationMinutes || 0),
+        durationMin: record.durationMinutes || 0,
+        durationHrs: Number(((record.durationMinutes || 0) / 60).toFixed(2)),
+        status: record.status,
+        source: record.source,
+      });
+    });
+
+    if (format === 'csv') {
+      const csvBuffer = await workbook.csv.writeBuffer();
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Length', Buffer.byteLength(csvBuffer));
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="TaskPulse_Attendance_${startDate || 'all'}_to_${endDate || 'all'}.csv"`
+      );
+      res.status(200).send(Buffer.from(csvBuffer));
+    } else {
+      const xlsxBuffer = await workbook.xlsx.writeBuffer();
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Length', Buffer.byteLength(xlsxBuffer));
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="TaskPulse_Attendance_${startDate || 'all'}_to_${endDate || 'all'}.xlsx"`
+      );
+      res.status(200).send(Buffer.from(xlsxBuffer));
+    }
   } catch (error) {
     next(error);
   }

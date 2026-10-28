@@ -16,7 +16,7 @@ const createTimeEntrySchema = z.object({
   taskId: z.string().min(1, 'Task ID is required'),
   workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Work date must be in YYYY-MM-DD format'),
   description: z.string().min(1, 'Description of work performed is required'),
-  durationMinutes: z.number().int().min(1, 'Duration must be at least 1 minute').max(1440, 'Duration cannot exceed 24 hours'),
+  durationMinutes: z.number().int().min(1, 'Duration must be at least 1 minute').max(10080, 'Duration cannot exceed 168 hours'),
   startTime: z.string().datetime().optional(),
   endTime: z.string().datetime().optional(),
   backdateReason: z.string().optional(),
@@ -24,7 +24,7 @@ const createTimeEntrySchema = z.object({
 
 const updateTimeEntrySchema = z.object({
   description: z.string().min(1).optional(),
-  durationMinutes: z.number().int().min(1).max(1440).optional(),
+  durationMinutes: z.number().int().min(1).max(10080).optional(),
   workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   backdateReason: z.string().optional(),
 });

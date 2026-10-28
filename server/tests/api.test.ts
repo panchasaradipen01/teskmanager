@@ -124,7 +124,7 @@ describe('2. Attendance & Punch Rules Tests', () => {
       .post('/api/attendance/punch-in')
       .set('Cookie', employeeCookie);
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('ALREADY_PUNCHED_IN');
   });
 
@@ -290,5 +290,60 @@ describe('4. Tasks and Time Entry Rules Tests', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('BACKDATE_LIMIT_EXCEEDED');
+  });
+});
+
+describe('5. Access Token, Refresh Token & Zod Validation Tests', () => {
+  it('should issue both accessToken and refreshToken on login with status 200', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'employee@test.com', password: 'EmployeePass123!' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.accessToken).toBeDefined();
+    expect(res.body.data.refreshToken).toBeDefined();
+    expect(res.headers['set-cookie']).toBeDefined();
+  });
+
+  it('should refresh access token using valid refresh token', async () => {
+    // 1. Login to get fresh tokens
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'employee@test.com', password: 'EmployeePass123!' });
+
+    const refreshToken = loginRes.body.data.refreshToken;
+    const cookies = loginRes.headers['set-cookie'];
+
+    // 2. Call /api/auth/refresh with cookie
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', cookies)
+      .send({});
+
+    expect(refreshRes.status).toBe(200);
+    expect(refreshRes.body.success).toBe(true);
+    expect(refreshRes.body.data.accessToken).toBeDefined();
+  });
+
+  it('should reject refresh when no refresh token is provided with 401', async () => {
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .send({});
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('NO_REFRESH_TOKEN');
+  });
+
+  it('should return 400 Bad Request and validation details when input fails Zod schema', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'invalid-email-format', password: '' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(Array.isArray(res.body.error.details)).toBe(true);
+    expect(res.body.error.details.some((d: any) => d.field === 'email')).toBe(true);
   });
 });

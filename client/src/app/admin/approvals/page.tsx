@@ -7,9 +7,11 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
+import { Textarea } from '@/components/ui/Textarea';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { formatTimeDisplay, formatDateDisplay } from '@/lib/utils';
+import { useToast } from '@/context/ToastContext';
 import {
   CheckCircle2,
   XCircle,
@@ -20,6 +22,7 @@ import {
 } from 'lucide-react';
 
 export default function AttendanceApprovalsPage() {
+  const { toast } = useToast();
   const [corrections, setCorrections] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState('PENDING');
   const [isLoading, setIsLoading] = useState(true);
@@ -33,7 +36,6 @@ export default function AttendanceApprovalsPage() {
   const [reviewAction, setReviewAction] = useState<'APPROVED' | 'REJECTED'>('APPROVED');
   const [reviewComment, setReviewComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fetchCorrections = useCallback(async () => {
     setIsLoading(true);
@@ -63,7 +65,6 @@ export default function AttendanceApprovalsPage() {
     e.preventDefault();
     if (!selectedCorrection) return;
     setIsSubmitting(true);
-    setFeedback(null);
 
     try {
       await api.patch(`/attendance/corrections/${selectedCorrection._id}/review`, {
@@ -71,15 +72,12 @@ export default function AttendanceApprovalsPage() {
         reviewComment,
       });
 
-      setFeedback({
-        type: 'success',
-        text: `Correction request has been ${reviewAction.toLowerCase()} successfully.`,
-      });
+      toast.success(`Correction request has been ${reviewAction.toLowerCase()} successfully.`);
       setIsReviewOpen(false);
       setReviewComment('');
       await fetchCorrections();
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err.message || 'Review submission failed' });
+      toast.error(err.message || 'Review submission failed');
     } finally {
       setIsSubmitting(false);
     }
@@ -206,23 +204,7 @@ export default function AttendanceApprovalsPage() {
           </div>
         </div>
 
-        {feedback && (
-          <div
-            className={`p-4 rounded-xl flex items-center justify-between border ${
-              feedback.type === 'success'
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-800'
-                : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 text-sm">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              <span>{feedback.text}</span>
-            </div>
-            <button onClick={() => setFeedback(null)} className="text-xs font-bold hover:underline">
-              Dismiss
-            </button>
-          </div>
-        )}
+
 
         <Card>
           <CardContent className="p-0">
@@ -267,21 +249,16 @@ export default function AttendanceApprovalsPage() {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              Admin Review Comments
-            </label>
-            <textarea
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              rows={3}
-              placeholder="Provide comments or audit rationale for this decision..."
-              value={reviewComment}
-              onChange={(e) => setReviewComment(e.target.value)}
-            />
-          </div>
+          <Textarea
+            label="Admin Review Comments"
+            rows={3}
+            placeholder="Provide comments or audit rationale for this decision..."
+            value={reviewComment}
+            onChange={(e) => setReviewComment(e.target.value)}
+          />
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setIsReviewOpen(false)}>
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setIsReviewOpen(false)}>
               Cancel
             </Button>
             <Button

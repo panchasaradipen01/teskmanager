@@ -14,9 +14,11 @@
     "build:client": "npm run build --workspace=client",
     "build": "npm run build:server && npm run build:client",
     "test:server": "npm run test --workspace=server",
-    "seed:admin": "npm run seed:admin --workspace=server"
+    "seed:admin": "npm run seed:admin --workspace=server",
+    "deploy:client": "npm run build:client && wrangler pages deploy client/out --project-name taskpulse"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "wrangler": "^4.154.0"
   }
 }

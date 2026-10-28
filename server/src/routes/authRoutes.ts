@@ -4,6 +4,7 @@ import {
   logout,
   getMe,
   changePassword,
+  refreshAccessToken,
 } from '../controllers/authController.js';
 import { authenticate } from '../middleware/auth.js';
 import { authRateLimiter } from '../middleware/rateLimiter.js';
@@ -11,6 +12,7 @@ import { authRateLimiter } from '../middleware/rateLimiter.js';
 const router = Router();
 
 router.post('/login', authRateLimiter, login);
+router.post('/refresh', refreshAccessToken);
 router.post('/logout', authenticate, logout);
 router.get('/me', authenticate, getMe);
 router.post('/change-password', authenticate, changePassword);

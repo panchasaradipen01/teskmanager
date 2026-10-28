@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
 import { api } from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -10,8 +11,11 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Textarea } from '@/components/ui/Textarea';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { formatMinutes, formatTimeDisplay } from '@/lib/utils';
+import { parseDurationString, formatHumanDuration } from '@/lib/duration';
+import { logTimeSchema, getZodFieldErrors } from '@/lib/validations';
 import {
   Clock,
   PlayCircle,
@@ -36,18 +40,34 @@ import {
 
 export default function UserDashboard() {
   const { user } = useAuth();
+  const toast = useToast();
   const [data, setData] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPunching, setIsPunching] = useState(false);
-  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Quick Time Entry Modal
   const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState('');
-  const [durationMinutes, setDurationMinutes] = useState(60);
+  const [durationInput, setDurationInput] = useState('1h 0m');
   const [workDescription, setWorkDescription] = useState('');
+  const [logTimeErrors, setLogTimeErrors] = useState<Record<string, string>>({});
   const [isSubmittingTime, setIsSubmittingTime] = useState(false);
+  const [todayStr, setTodayStr] = useState('');
+  const [yesterdayStr, setYesterdayStr] = useState('');
+  const [workDate, setWorkDate] = useState('');
+  const [backdateReason, setBackdateReason] = useState('');
+
+  useEffect(() => {
+    const now = new Date();
+    const t = now.toISOString().split('T')[0];
+    const y = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    setTodayStr(t);
+    setYesterdayStr(y);
+    setWorkDate(t);
+  }, []);
+
+  const parsedMinutes = parseDurationString(durationInput);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -73,13 +93,12 @@ export default function UserDashboard() {
 
   const handlePunchIn = async () => {
     setIsPunching(true);
-    setActionMessage(null);
     try {
       const res = await api.post('/attendance/punch-in');
-      setActionMessage({ type: 'success', text: res.message || 'Punched in successfully!' });
+      toast.success(res.message || 'Punched in successfully!');
       await fetchDashboardData();
     } catch (err: any) {
-      setActionMessage({ type: 'error', text: err.message || 'Punch-in failed' });
+      toast.error(err.message || 'Punch-in failed');
     } finally {
       setIsPunching(false);
     }
@@ -87,13 +106,12 @@ export default function UserDashboard() {
 
   const handlePunchOut = async () => {
     setIsPunching(true);
-    setActionMessage(null);
     try {
       const res = await api.post('/attendance/punch-out');
-      setActionMessage({ type: 'success', text: res.message || 'Punched out successfully!' });
+      toast.success(res.message || 'Punched out successfully!');
       await fetchDashboardData();
     } catch (err: any) {
-      setActionMessage({ type: 'error', text: err.message || 'Punch-out failed' });
+      toast.error(err.message || 'Punch-out failed');
     } finally {
       setIsPunching(false);
     }
@@ -101,23 +119,60 @@ export default function UserDashboard() {
 
   const handleLogTime = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTaskId) return;
+    setLogTimeErrors({});
+
+    const validation = logTimeSchema.safeParse({
+      taskId: selectedTaskId,
+      workDate,
+      durationMinutes: parsedMinutes,
+      description: workDescription.trim(),
+      backdateReason: workDate === yesterdayStr ? backdateReason.trim() : undefined,
+    });
+
+    if (!validation.success) {
+      setLogTimeErrors(getZodFieldErrors(validation.error));
+      return;
+    }
+
+    if (workDate < yesterdayStr) {
+      setLogTimeErrors({ workDate: 'Logging time is limited to today and yesterday. Past dates beyond -1 day are locked.' });
+      return;
+    }
+
+    if (workDate > todayStr) {
+      setLogTimeErrors({ workDate: 'Cannot record time entries for future dates.' });
+      return;
+    }
+
+    if (workDate === yesterdayStr && (!backdateReason || backdateReason.trim().length < 5)) {
+      setLogTimeErrors({ backdateReason: 'A mandatory explanation note (at least 5 characters) is required when recording time for yesterday.' });
+      return;
+    }
 
     setIsSubmittingTime(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
       await api.post('/time-entries', {
         taskId: selectedTaskId,
-        workDate: today,
-        durationMinutes: Number(durationMinutes),
-        description: workDescription,
+        workDate,
+        durationMinutes: parsedMinutes,
+        description: workDescription.trim(),
+        backdateReason: workDate === yesterdayStr ? backdateReason.trim() : undefined,
       });
       setIsTimeModalOpen(false);
       setWorkDescription('');
-      setActionMessage({ type: 'success', text: 'Time logged successfully!' });
+      setBackdateReason('');
+      setLogTimeErrors({});
+      toast.success(`Logged ${formatHumanDuration(parsedMinutes)} successfully!`);
       await fetchDashboardData();
     } catch (err: any) {
-      setActionMessage({ type: 'error', text: err.message || 'Failed to log time' });
+      if (err.details && Array.isArray(err.details)) {
+        const bErrors: Record<string, string> = {};
+        err.details.forEach((d: any) => {
+          if (d.field) bErrors[d.field] = d.message;
+        });
+        setLogTimeErrors(bErrors);
+      }
+      toast.error(err.message || 'Failed to log time');
     } finally {
       setIsSubmittingTime(false);
     }
@@ -212,32 +267,6 @@ export default function UserDashboard() {
           </div>
         </div>
 
-        {/* Action Message Alert */}
-        {actionMessage && (
-          <div
-            className={`p-4 rounded-xl flex items-center justify-between border ${
-              actionMessage.type === 'success'
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-800 dark:text-emerald-300'
-                : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-800 dark:text-rose-300'
-            }`}
-          >
-            <div className="flex items-center gap-2 text-sm font-medium">
-              {actionMessage.type === 'success' ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              ) : (
-                <AlertCircle className="w-5 h-5 text-rose-600" />
-              )}
-              <span>{actionMessage.text}</span>
-            </div>
-            <button
-              onClick={() => setActionMessage(null)}
-              className="text-xs font-bold hover:underline"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
         {/* Metric Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
@@ -266,7 +295,7 @@ export default function UserDashboard() {
                   Task Time Logged Today
                 </p>
                 <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100 mt-1">
-                  {data?.taskHoursToday} hrs
+                  {formatHumanDuration(data?.taskMinutesToday || 0)}
                 </h3>
                 <span className="text-xs text-slate-400 mt-0.5 block">
                   {data?.taskMinutesToday || 0} minutes total
@@ -364,7 +393,10 @@ export default function UserDashboard() {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => setIsTimeModalOpen(true)}
+                onClick={() => {
+                  setDurationInput('1h 0m');
+                  setIsTimeModalOpen(true);
+                }}
                 icon={<PlusCircle className="w-4 h-4" />}
               >
                 Log Time
@@ -407,47 +439,90 @@ export default function UserDashboard() {
         isOpen={isTimeModalOpen}
         onClose={() => setIsTimeModalOpen(false)}
         title="Log Time Spent on Task"
-        description="Record the duration and work performed for today."
+        description="Record the duration and work performed for today or yesterday."
       >
-        <form onSubmit={handleLogTime} className="space-y-4">
+        <form onSubmit={handleLogTime} className="space-y-4" noValidate>
           <Select
             label="Select Task"
             value={selectedTaskId}
-            onChange={(e) => setSelectedTaskId(e.target.value)}
+            error={logTimeErrors.taskId}
+            onChange={(e) => {
+              setSelectedTaskId(e.target.value);
+              if (logTimeErrors.taskId) setLogTimeErrors((p) => { const n = { ...p }; delete n.taskId; return n; });
+            }}
             options={tasks.map((t) => ({ value: t._id, label: t.title }))}
             required
           />
 
           <Input
-            label="Duration in Minutes"
-            type="number"
-            min={1}
-            max={1440}
-            value={durationMinutes}
-            onChange={(e) => setDurationMinutes(Number(e.target.value))}
-            helperText={`${formatMinutes(durationMinutes)}`}
+            label="Work Date (YYYY-MM-DD)"
+            type="date"
+            min={yesterdayStr}
+            max={todayStr}
+            value={workDate}
+            error={logTimeErrors.workDate}
+            onChange={(e) => {
+              setWorkDate(e.target.value);
+              if (logTimeErrors.workDate) setLogTimeErrors((p) => { const n = { ...p }; delete n.workDate; return n; });
+            }}
+            helperText="Logging permitted only for today or yesterday. Past dates beyond -1 day are locked."
             required
           />
 
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              Work Description
-            </label>
-            <textarea
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              rows={3}
-              placeholder="Detailed description of activities and deliverables completed..."
-              value={workDescription}
-              onChange={(e) => setWorkDescription(e.target.value)}
-              required
-            />
-          </div>
+          <Input
+            label="Duration (e.g. 1h 0m, 1d 1h 10m, 1w 1d 1h 10m)"
+            type="text"
+            placeholder="e.g. 1h 0m, 1d 1h 10m, 45m"
+            value={durationInput}
+            error={logTimeErrors.durationMinutes}
+            onChange={(e) => {
+              setDurationInput(e.target.value);
+              if (logTimeErrors.durationMinutes) setLogTimeErrors((p) => { const n = { ...p }; delete n.durationMinutes; return n; });
+            }}
+            helperText={
+              parsedMinutes > 0
+                ? `Interpreted as: ${formatHumanDuration(parsedMinutes)} (${parsedMinutes} minutes)`
+                : 'Enter duration using w, d, h, m (e.g. 1w 1d 1h 10m, 1d 2h, 45m)'
+            }
+            required
+          />
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setIsTimeModalOpen(false)}>
+          {workDate === yesterdayStr && (
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 space-y-1.5">
+              <Textarea
+                label="Mandatory Previous-Day Explanation Note"
+                rows={2}
+                placeholder="Explain why this entry is being logged for yesterday..."
+                value={backdateReason}
+                error={logTimeErrors.backdateReason}
+                onChange={(e) => {
+                  setBackdateReason(e.target.value);
+                  if (logTimeErrors.backdateReason) setLogTimeErrors((p) => { const n = { ...p }; delete n.backdateReason; return n; });
+                }}
+                minLength={5}
+                required
+              />
+            </div>
+          )}
+
+          <Textarea
+            label="Work Description"
+            rows={3}
+            placeholder="Detailed description of activities and deliverables completed..."
+            value={workDescription}
+            error={logTimeErrors.description}
+            onChange={(e) => {
+              setWorkDescription(e.target.value);
+              if (logTimeErrors.description) setLogTimeErrors((p) => { const n = { ...p }; delete n.description; return n; });
+            }}
+            required
+          />
+
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setIsTimeModalOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" isLoading={isSubmittingTime}>
+            <Button variant="primary" type="submit" isLoading={isSubmittingTime} disabled={parsedMinutes <= 0}>
               Record Entry
             </Button>
           </div>

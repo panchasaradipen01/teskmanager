@@ -16,6 +16,8 @@ interface DataTableProps<T> {
   isLoading?: boolean;
   emptyMessage?: string;
   onRowClick?: (row: T) => void;
+  maxHeight?: string;
+  tableContainerClassName?: string;
 }
 
 export function DataTable<T extends { _id?: string; id?: string }>({
@@ -24,6 +26,8 @@ export function DataTable<T extends { _id?: string; id?: string }>({
   isLoading = false,
   emptyMessage = 'No records found matching your filters.',
   onRowClick,
+  maxHeight,
+  tableContainerClassName,
 }: DataTableProps<T>) {
   if (isLoading) {
     return (
@@ -47,14 +51,20 @@ export function DataTable<T extends { _id?: string; id?: string }>({
   }
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div
+      className={cn(
+        'w-full overflow-auto max-h-[calc(100vh-340px)] min-h-[220px] rounded-b-xl',
+        tableContainerClassName
+      )}
+      style={maxHeight ? { maxHeight } : undefined}
+    >
       <table className="w-full text-left text-sm text-slate-700 dark:text-slate-300">
-        <thead className="bg-slate-50/80 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-800/60 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+        <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-xs text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 shadow-xs">
           <tr>
             {columns.map((col, index) => (
               <th
                 key={index}
-                className={cn('px-4 py-3.5 select-none whitespace-nowrap', col.className)}
+                className={cn('px-4 py-3.5 select-none whitespace-nowrap bg-inherit', col.className)}
               >
                 {col.header}
               </th>

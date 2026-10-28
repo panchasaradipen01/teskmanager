@@ -16,7 +16,8 @@ export const errorHandler = (
       field: e.path.join('.'),
       message: e.message,
     }));
-    sendError(res, 'Validation failed for request data', 422, 'VALIDATION_ERROR', formattedErrors);
+    const primaryMessage = err.errors[0]?.message || 'Validation failed for request data';
+    sendError(res, primaryMessage, 400, 'VALIDATION_ERROR', formattedErrors);
     return;
   }
 

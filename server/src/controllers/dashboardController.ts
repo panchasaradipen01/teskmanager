@@ -43,7 +43,7 @@ export const getAdminDashboard = async (
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
       AttendanceCorrection.countDocuments({ status: CORRECTION_STATUS.PENDING }),
-      Attendance.countDocuments({ status: ATTENDANCE_STATUS.INCOMPLETE }),
+      Attendance.countDocuments({ attendanceDate: { $lt: today }, punchOutAt: { $exists: false } }),
     ]);
 
     // Calculate today's total attendance hours

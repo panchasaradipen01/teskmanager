@@ -8,9 +8,12 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
 import { DataTable, Column } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { formatMinutes, formatDateDisplay, formatTimeDisplay } from '@/lib/utils';
+import { useToast } from '@/context/ToastContext';
+import { attendanceCorrectionSchema, getZodFieldErrors } from '@/lib/validations';
 import {
   Clock,
   PlusCircle,
@@ -21,6 +24,7 @@ import {
 } from 'lucide-react';
 
 export default function MyAttendancePage() {
+  const { toast } = useToast();
   const [records, setRecords] = useState<any[]>([]);
   const [corrections, setCorrections] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,12 +38,19 @@ export default function MyAttendancePage() {
   const [requestedIn, setRequestedIn] = useState('09:00');
   const [requestedOut, setRequestedOut] = useState('18:00');
   const [reason, setReason] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [todayMax, setTodayMax] = useState('');
+  const [yesterdayMin, setYesterdayMin] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    setTodayMax(new Date().toISOString().split('T')[0]);
+    const today = new Date().toISOString().split('T')[0];
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yesterday = y.toISOString().split('T')[0];
+    setTodayMax(today);
+    setYesterdayMin(yesterday);
+    setTargetDate(yesterday);
   }, []);
 
   const fetchAttendance = useCallback(async () => {
@@ -68,30 +79,63 @@ export default function MyAttendancePage() {
 
   const handleSubmitCorrection = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrors({});
+
+    if (targetDate < yesterdayMin) {
+      setErrors({ targetDate: 'Attendance corrections are limited to yesterday and today. Earlier dates are locked.' });
+      return;
+    }
+
+    if (targetDate > todayMax) {
+      setErrors({ targetDate: 'Attendance corrections cannot be submitted for future dates.' });
+      return;
+    }
+
+    const punchInIso = new Date(`${targetDate}T${requestedIn}:00Z`).toISOString();
+    const punchOutIso = new Date(`${targetDate}T${requestedOut}:00Z`).toISOString();
+
+    if (punchOutIso <= punchInIso) {
+      setErrors({ requestedPunchOutAt: 'Punch-out time must be after punch-in time.' });
+      return;
+    }
+
+    const validation = attendanceCorrectionSchema.safeParse({
+      targetDate,
+      requestedPunchInAt: punchInIso,
+      requestedPunchOutAt: punchOutIso,
+      reason: reason.trim(),
+    });
+
+    if (!validation.success) {
+      setErrors(getZodFieldErrors(validation.error));
+      return;
+    }
+
     setIsSubmitting(true);
-    setFeedback(null);
 
     try {
-      const punchInIso = new Date(`${targetDate}T${requestedIn}:00Z`).toISOString();
-      const punchOutIso = new Date(`${targetDate}T${requestedOut}:00Z`).toISOString();
-
       await api.post('/attendance/corrections', {
         targetDate,
         requestedPunchInAt: punchInIso,
         requestedPunchOutAt: punchOutIso,
-        reason,
+        reason: reason.trim(),
       });
 
-      setFeedback({
-        type: 'success',
-        text: 'Attendance correction request submitted for admin review.',
-      });
+      toast.success('Attendance correction request submitted for admin review.');
       setIsModalOpen(false);
-      setTargetDate('');
+      setTargetDate(yesterdayMin);
       setReason('');
+      setErrors({});
       await fetchAttendance();
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err.message || 'Submission failed' });
+      if (err.details && Array.isArray(err.details)) {
+        const bErrors: Record<string, string> = {};
+        err.details.forEach((d: any) => {
+          if (d.field) bErrors[d.field] = d.message;
+        });
+        setErrors(bErrors);
+      }
+      toast.error(err.message || 'Submission failed');
     } finally {
       setIsSubmitting(false);
     }
@@ -183,23 +227,6 @@ export default function MyAttendancePage() {
           </div>
         </div>
 
-        {feedback && (
-          <div
-            className={`p-4 rounded-xl flex items-center justify-between border ${
-              feedback.type === 'success'
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-800'
-                : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-800'
-            }`}
-          >
-            <div className="flex items-center gap-2 text-sm">
-              {feedback.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <AlertCircle className="w-5 h-5 text-rose-600" />}
-              <span>{feedback.text}</span>
-            </div>
-            <button onClick={() => setFeedback(null)} className="text-xs font-bold hover:underline">
-              Dismiss
-            </button>
-          </div>
-        )}
 
         {/* Primary Attendance Table */}
         <Card>
@@ -291,14 +318,19 @@ export default function MyAttendancePage() {
         title="Submit Attendance Correction"
         description="Submit previous-day missed punch-in or punch-out with a mandatory explanation."
       >
-        <form onSubmit={handleSubmitCorrection} className="space-y-4">
+        <form onSubmit={handleSubmitCorrection} className="space-y-4" noValidate>
           <Input
             label="Target Date (YYYY-MM-DD)"
             type="date"
+            min={yesterdayMin}
             max={todayMax}
             value={targetDate}
-            onChange={(e) => setTargetDate(e.target.value)}
-            helperText="Cannot select future dates."
+            error={errors.targetDate}
+            onChange={(e) => {
+              setTargetDate(e.target.value);
+              if (errors.targetDate) setErrors((p) => { const n = { ...p }; delete n.targetDate; return n; });
+            }}
+            helperText="Correction permitted only for yesterday or today. Dates beyond -1 day are locked."
             required
           />
 
@@ -307,38 +339,43 @@ export default function MyAttendancePage() {
               label="Requested Punch In"
               type="time"
               value={requestedIn}
-              onChange={(e) => setRequestedIn(e.target.value)}
+              error={errors.requestedPunchInAt}
+              onChange={(e) => {
+                setRequestedIn(e.target.value);
+                if (errors.requestedPunchInAt) setErrors((p) => { const n = { ...p }; delete n.requestedPunchInAt; return n; });
+              }}
               required
             />
             <Input
               label="Requested Punch Out"
               type="time"
               value={requestedOut}
-              onChange={(e) => setRequestedOut(e.target.value)}
+              error={errors.requestedPunchOutAt}
+              onChange={(e) => {
+                setRequestedOut(e.target.value);
+                if (errors.requestedPunchOutAt) setErrors((p) => { const n = { ...p }; delete n.requestedPunchOutAt; return n; });
+              }}
               required
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              Mandatory Reason / Justification
-            </label>
-            <textarea
-              className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              rows={3}
-              placeholder="Explain the circumstance (e.g. system timeout, field client visit, electricity outage)..."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              minLength={5}
-              required
-            />
-            <p className="text-[11px] text-slate-400">
-              Must be at least 5 characters long and will be archived in the permanent audit trail.
-            </p>
-          </div>
+          <Textarea
+            label="Mandatory Reason / Justification"
+            rows={3}
+            placeholder="Explain the circumstance (e.g. system timeout, field client visit, electricity outage)..."
+            value={reason}
+            error={errors.reason}
+            onChange={(e) => {
+              setReason(e.target.value);
+              if (errors.reason) setErrors((p) => { const n = { ...p }; delete n.reason; return n; });
+            }}
+            helperText="Must be at least 5 characters long and will be archived in the permanent audit trail."
+            minLength={5}
+            required
+          />
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" type="button" onClick={() => setIsModalOpen(false)}>
+          <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" isLoading={isSubmitting}>

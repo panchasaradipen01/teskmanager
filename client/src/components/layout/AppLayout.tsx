@@ -35,7 +35,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const pathname = rawPath.length > 1 && rawPath.endsWith('/') ? rawPath.slice(0, -1) : rawPath;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const isAdmin = user?.role === 'ADMIN';
+  const isAdmin = user?.role === 'ADMIN' || pathname.startsWith('/admin');
 
   const adminNav = [
     { label: 'Admin Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
@@ -113,7 +113,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         }`}
       >
         {/* Brand Header - Pinned at top of sidebar */}
-        <div className="shrink-0 p-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
+        <div className="h-16 shrink-0 px-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-lg shadow-sm shadow-indigo-500/20">
               TP
@@ -217,7 +217,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       {/* Main Content Area - Independent Full-Height Scrollable Column */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Top Header Bar - Pinned at top */}
-        <header className="shrink-0 hidden md:flex items-center justify-between px-8 py-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 z-30">
+        <header className="h-16 shrink-0 hidden md:flex items-center justify-between px-8 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 z-30">
           <div className="flex items-center gap-3">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
               Business Date (Asia/Kolkata):

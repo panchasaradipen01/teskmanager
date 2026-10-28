@@ -16,7 +16,17 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('taskpulse_user');
+        return cached ? JSON.parse(cached) : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const router = useRouter();
   const rawPath = usePathname() || '/';
@@ -27,11 +37,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await api.get('/auth/me');
       if (res?.data?.user) {
         setUser(res.data.user);
+        try {
+          localStorage.setItem('taskpulse_user', JSON.stringify(res.data.user));
+        } catch {}
       } else {
         setUser(null);
+        try {
+          localStorage.removeItem('taskpulse_user');
+        } catch {}
       }
     } catch {
-      setUser(null);
+      // If we don't even have a token, clear cached user
+      try {
+        if (!localStorage.getItem('taskpulse_access_token')) {
+          setUser(null);
+          localStorage.removeItem('taskpulse_user');
+        }
+      } catch {}
     } finally {
       setIsLoading(false);
     }
@@ -80,6 +102,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setUser(loggedUser);
+    try {
+      localStorage.setItem('taskpulse_user', JSON.stringify(loggedUser));
+    } catch {}
 
     if (loggedUser.mustChangePassword) {
       router.push('/set-password');
@@ -98,6 +123,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Ignore network errors on logout
     } finally {
       setAuthTokens(null, null);
+      try {
+        localStorage.removeItem('taskpulse_user');
+      } catch {}
       setUser(null);
       router.push('/login');
     }

@@ -23,10 +23,26 @@ export const createApp = (): express.Application => {
   app.use(helmet());
   app.use(
     cors({
-      origin: [ENV.CLIENT_URL, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+      origin: (requestOrigin, callback) => {
+        if (!requestOrigin) return callback(null, true);
+        const allowed = [
+          ENV.CLIENT_URL,
+          'https://taskpulse.pages.dev',
+          'http://localhost:3000',
+          'http://127.0.0.1:3000',
+        ];
+        if (
+          allowed.includes(requestOrigin) ||
+          requestOrigin.endsWith('.taskpulse.pages.dev') ||
+          requestOrigin.endsWith('.pages.dev')
+        ) {
+          return callback(null, true);
+        }
+        callback(null, false);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-refresh-token', 'X-Refresh-Token'],
       exposedHeaders: ['Content-Disposition'],
     })
   );

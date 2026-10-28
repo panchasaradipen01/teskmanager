@@ -13,13 +13,22 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('taskpulse_theme');
+      if (saved === 'light') return 'light';
+      return 'dark';
+    }
+    return 'dark';
+  });
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // Read the class that was already set by the inline head script
-    const isDark = document.documentElement.classList.contains('dark');
-    setTheme(isDark ? 'dark' : 'light');
+    const saved = localStorage.getItem('taskpulse_theme');
+    const isDark = saved ? saved === 'dark' : true;
+    const currentTheme: Theme = isDark ? 'dark' : 'light';
+    setTheme(currentTheme);
+    applyTheme(currentTheme);
     setMounted(true);
   }, []);
 

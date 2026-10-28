@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/navigation';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -145,7 +145,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
             return (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setMobileMenuOpen(false)}
@@ -161,7 +161,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                   }`}
                 />
                 <span className="truncate">{item.label}</span>
-              </a>
+              </Link>
             );
           })}
 
@@ -170,13 +170,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
               <div className="px-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 Switch Perspective
               </div>
-              <a
+              <Link
                 href="/dashboard"
                 className="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <ClipboardList className="w-4 h-4 text-slate-400" />
                 <span>My Employee View</span>
-              </a>
+              </Link>
             </div>
           )}
         </div>

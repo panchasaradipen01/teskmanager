@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { api } from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
@@ -80,7 +81,7 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <a href="/admin/approvals">
+            <Link href="/admin/approvals">
               <Button
                 variant={s?.pendingCorrections > 0 ? 'primary' : 'outline'}
                 size="sm"
@@ -88,7 +89,7 @@ export default function AdminDashboardPage() {
               >
                 {s?.pendingCorrections} Pending Approvals
               </Button>
-            </a>
+            </Link>
           </div>
         </div>
 

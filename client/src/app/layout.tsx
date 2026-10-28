@@ -11,8 +11,8 @@ const themeScript = `
 (function() {
   try {
     var saved = localStorage.getItem('taskpulse_theme');
-    var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var isDark = saved === 'dark' || (!saved && prefersDark);
+    // Default to dark mode unless explicitly set to light
+    var isDark = saved ? saved === 'dark' : true;
     if (isDark) {
       document.documentElement.classList.add('dark');
       document.documentElement.style.colorScheme = 'dark';

@@ -17,17 +17,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('taskpulse_theme') as Theme | null;
-    let initialTheme: Theme = 'light';
-
-    if (saved === 'dark' || saved === 'light') {
-      initialTheme = saved;
-    } else if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      initialTheme = 'dark';
-    }
-
-    setTheme(initialTheme);
-    applyTheme(initialTheme);
+    // Read the class that was already set by the inline head script
+    const isDark = document.documentElement.classList.contains('dark');
+    setTheme(isDark ? 'dark' : 'light');
     setMounted(true);
   }, []);
 

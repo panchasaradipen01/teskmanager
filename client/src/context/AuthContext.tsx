@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, setAuthTokens } from '@/lib/api';
 import { User } from '@/types';
 
 interface AuthContextType {
@@ -70,6 +70,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string): Promise<User> => {
     const res = await api.post('/auth/login', { email, password });
     const loggedUser = res.data.user;
+    
+    // Store tokens in memory/localStorage to withstand cross-site Incognito third-party cookie blocking
+    const accessToken = res.data?.accessToken || res.data?.token;
+    const refreshToken = res.data?.refreshToken;
+    if (accessToken) {
+      setAuthTokens(accessToken, refreshToken);
+    }
+
     setUser(loggedUser);
 
     if (loggedUser.mustChangePassword) {
@@ -88,6 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {
       // Ignore network errors on logout
     } finally {
+      setAuthTokens(null, null);
       setUser(null);
       router.push('/login');
     }

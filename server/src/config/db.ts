@@ -15,7 +15,7 @@ export const connectDB = async (customUri?: string): Promise<typeof mongoose> =>
       dbName: ENV.MONGODB_DB_NAME,
       autoIndex: true,
       serverSelectionTimeoutMS: 5000,
-    });
+    } as mongoose.ConnectOptions);
 
     isConnected = true;
     console.log(`[Database] MongoDB connected successfully to: ${conn.connection.host}/${conn.connection.name}`);

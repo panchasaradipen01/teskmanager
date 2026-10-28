@@ -1,9 +1,8 @@
 import dotenv from 'dotenv';
-import path from 'path';
 
 // Load .env from server dir first, fallback to root .env
 dotenv.config();
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config({ path: '../.env' });
 
 export const ENV = {
   NODE_ENV: process.env.NODE_ENV || 'development',

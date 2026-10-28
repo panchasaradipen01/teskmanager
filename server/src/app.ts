@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -45,7 +45,7 @@ export const createApp = (): express.Application => {
   app.use('/api/', apiRateLimiter);
 
   // Health check endpoint
-  app.get('/api/health', (_req, res) => {
+  app.get('/api/health', (_req: Request, res: Response) => {
     res.json({
       status: 'healthy',
       app: ENV.APP_NAME,
@@ -64,7 +64,7 @@ export const createApp = (): express.Application => {
   app.use('/api/audit-logs', auditRoutes);
 
   // 404 Route Handler
-  app.use((_req, res) => {
+  app.use((_req: Request, res: Response) => {
     res.status(404).json({
       success: false,
       error: {
